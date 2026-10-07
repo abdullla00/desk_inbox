@@ -6,7 +6,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.query_builder import DocType
-from frappe.utils import cint
+from frappe.utils import cint, strip_html
 from pypika import Order
 
 
@@ -77,7 +77,7 @@ def _get_assigned(limit: int) -> dict:
 		if row.reference_type and row.reference_name:
 			if not frappe.has_permission(row.reference_type, "read", row.reference_name):
 				continue
-		title = (row.description or "").strip() or row.reference_name or row.name
+		title = (strip_html(row.description or "") or "").strip() or row.reference_name or row.name
 		if len(title) > 80:
 			title = title[:77] + "…"
 		items.append(
@@ -119,20 +119,12 @@ def _get_pending_me(limit: int) -> dict:
 	for row in rows:
 		if not row.reference_doctype or not row.reference_name:
 			continue
-		# WA permission already scopes this list. Prefer a real title when the
-		# user can read the doc; otherwise fall back to the document name.
-		can_read = frappe.has_permission(row.reference_doctype, "read", row.reference_name)
-		title = (
-			_doc_title(row.reference_doctype, row.reference_name)
-			if can_read
-			else row.reference_name
-		)
 		items.append(
 			{
 				"doctype": row.reference_doctype,
 				"name": row.reference_name,
 				"workflow_action": row.name,
-				"title": title,
+				"title": _(row.reference_doctype),
 				"status": row.workflow_state or row.status,
 				"modified": str(row.modified) if row.modified else None,
 				"kind": "pending_me",
@@ -228,7 +220,7 @@ def _get_waiting_others(limit: int) -> dict:
 					"doctype": action.reference_doctype,
 					"name": action.reference_name,
 					"workflow_action": action.name,
-					"title": _doc_title(action.reference_doctype, action.reference_name),
+					"title": _(action.reference_doctype),
 					"status": action.workflow_state or action.status,
 					"modified": str(action.modified) if action.modified else None,
 					"kind": "waiting_others",
@@ -236,17 +228,3 @@ def _get_waiting_others(limit: int) -> dict:
 			)
 
 	return {"count": full_count, "items": items}
-
-
-def _doc_title(doctype: str, name: str) -> str:
-	"""Best-effort display title for a referenced document."""
-	try:
-		meta = frappe.get_meta(doctype)
-		title_field = meta.get_title_field()
-		if title_field and title_field != "name":
-			value = frappe.db.get_value(doctype, name, title_field)
-			if value:
-				return str(value)
-	except Exception:
-		pass
-	return name
