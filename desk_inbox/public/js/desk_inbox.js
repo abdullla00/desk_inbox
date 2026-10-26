@@ -35,6 +35,15 @@
 				filters: { status: "Open" },
 			}),
 		},
+		{
+			key: "mentions",
+			label: () => __("Mentions"),
+			className: "desk-inbox-panel--mentions",
+			viewAll: () => ({
+				doctype: "Notification Log",
+				filters: { type: "Mention", read: 0 },
+			}),
+		},
 	];
 
 	frappe.desk_inbox = frappe.desk_inbox || {};
@@ -97,7 +106,7 @@
 			<div class="desk-inbox__header">
 				<div class="desk-inbox__title-wrap">
 					<h2 class="desk-inbox__title">${__("Inbox")}</h2>
-					<span class="desk-inbox__total" data-total title="${__("Assigned + pending")}">0</span>
+					<span class="desk-inbox__total" data-total title="${__("Assigned + pending + mentions")}">0</span>
 				</div>
 				<button type="button" class="desk-inbox__refresh" data-refresh title="${__(
 					"Refresh"
@@ -153,6 +162,16 @@
 			const $row = $(e.currentTarget);
 			const doctype = $row.attr("data-doctype");
 			const name = $row.attr("data-name");
+			const notification_log = $row.attr("data-notification-log");
+
+			if (notification_log) {
+				frappe.call({
+					method: "desk_inbox.api.mark_mention_read",
+					args: { name: notification_log },
+					callback: () => refresh(),
+				});
+			}
+
 			if (doctype && name) {
 				frappe.set_route("Form", doctype, name);
 			}
@@ -189,7 +208,8 @@
 
 		const assignedCount = data.assigned?.count || 0;
 		const pendingCount = data.pending_me?.count || 0;
-		tick_count($root.find("[data-total]"), assignedCount + pendingCount);
+		const mentionsCount = data.mentions?.count || 0;
+		tick_count($root.find("[data-total]"), assignedCount + pendingCount + mentionsCount);
 
 		PANEL_DEFS.forEach((def) => {
 			const bucket = data[def.key] || { count: 0, items: [] };
@@ -237,15 +257,21 @@
 			: "";
 		const doctype = frappe.utils.escape_html(item.doctype || "");
 		const name = frappe.utils.escape_html(item.name || "");
+		const notification_log = frappe.utils.escape_html(item.notification_log || "");
 		const status_label = format_status(item.status, panelKey);
+		const overdue = !!item.overdue || status_label === __("Overdue");
 		const status_html = status_label
-			? `<span class="desk-inbox-row__status">${frappe.utils.escape_html(
-					status_label
-			  )}</span>`
+			? `<span class="desk-inbox-row__status${
+					overdue ? " desk-inbox-row__status--overdue" : ""
+			  }">${frappe.utils.escape_html(status_label)}</span>`
 			: "";
+		const log_attr = notification_log
+			? ` data-notification-log="${notification_log}"`
+			: "";
+		const overdue_class = overdue ? " is-overdue" : "";
 
 		return `
-		<div class="desk-inbox-row" data-doctype="${doctype}" data-name="${name}">
+		<div class="desk-inbox-row${overdue_class}" data-doctype="${doctype}" data-name="${name}"${log_attr}>
 			<span class="desk-inbox-row__dot" aria-hidden="true"></span>
 			<div class="desk-inbox-row__main">
 				<div class="desk-inbox-row__line">

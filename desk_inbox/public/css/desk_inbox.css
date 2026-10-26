@@ -12,15 +12,19 @@
 	/* Explicit hues — Desk --primary-color is often near-black */
 	--di-assigned: #2563eb;
 	--di-assigned-bg: color-mix(in srgb, #2563eb 14%, transparent);
+	--di-overdue: #dc2626;
+	--di-overdue-bg: color-mix(in srgb, #dc2626 14%, transparent);
 	--di-pending: #c27803;
 	--di-pending-bg: color-mix(in srgb, #d97706 14%, transparent);
 	--di-waiting: #0f766e;
 	--di-waiting-bg: color-mix(in srgb, #0f766e 14%, transparent);
+	--di-mentions: #7c3aed;
+	--di-mentions-bg: color-mix(in srgb, #7c3aed 14%, transparent);
 
 	display: block;
 	width: 100%;
 	/* Fallback; JS syncs to icon-row width on ≥1100px */
-	max-width: 842px;
+	max-width: 1100px;
 	margin: 8px auto 40px;
 	padding: 0 20px;
 	box-sizing: border-box;
@@ -127,7 +131,7 @@
 /* Single work-strip surface */
 .desk-inbox__panels {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	background: var(--di-surface);
 	border: 1px solid var(--di-border);
 	border-radius: var(--di-radius);
@@ -245,12 +249,24 @@
 	background: var(--di-assigned);
 }
 
+.desk-inbox-panel--assigned .desk-inbox-row.is-overdue .desk-inbox-row__dot {
+	background: var(--di-overdue);
+}
+
+.desk-inbox-row__status--overdue {
+	color: var(--di-overdue) !important;
+}
+
 .desk-inbox-panel--pending .desk-inbox-row__dot {
 	background: var(--di-pending);
 }
 
 .desk-inbox-panel--waiting .desk-inbox-row__dot {
 	background: var(--di-waiting);
+}
+
+.desk-inbox-panel--mentions .desk-inbox-row__dot {
+	background: var(--di-mentions);
 }
 
 .desk-inbox-panel--assigned .desk-inbox-panel__count {
@@ -261,6 +277,11 @@
 .desk-inbox-panel--waiting .desk-inbox-panel__count {
 	color: var(--di-waiting);
 	background: var(--di-waiting-bg);
+}
+
+.desk-inbox-panel--mentions .desk-inbox-panel__count {
+	color: var(--di-mentions);
+	background: var(--di-mentions-bg);
 }
 
 .desk-inbox-row__main {
@@ -294,6 +315,10 @@
 
 .desk-inbox-panel--waiting .desk-inbox-row__status {
 	color: var(--di-waiting);
+}
+
+.desk-inbox-panel--mentions .desk-inbox-row__status {
+	color: var(--di-mentions);
 }
 
 .desk-inbox-row__title {
@@ -379,13 +404,17 @@
 
 /* —— Responsive —— */
 
-/* Tablet / mid: keep 3 cols, full width, slightly shorter lists */
+/* Tablet / mid: 2×2 grid, full width, slightly shorter lists */
 @media (max-width: 1099px) {
 	.desk-inbox {
 		max-width: none !important; /* beat JS inline sync_width */
 		width: 100%;
 		padding: 0 16px;
 		margin-bottom: 28px;
+	}
+
+	.desk-inbox__panels {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 
 	.desk-inbox {
