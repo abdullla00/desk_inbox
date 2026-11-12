@@ -8,7 +8,7 @@ A Frappe app that adds an **Inbox** work strip under the Desktop icon grid — a
 | --- | --- | --- |
 | **Assigned to me** | Open ToDos allocated to you | List → ToDo (`allocated_to`=me, Open) |
 | **Pending my action** | Open Workflow Actions you can act on | List → Workflow Action (Open) |
-| **Waiting on others** | Open WAs on docs you own, waiting on someone else | Report → **Waiting on Others** |
+| **Waiting on others** | Open WAs on docs you own, waiting on someone else | Report → **Waiting on Others** (grants Desk User **Report** on Workflow Action) |
 | **Mentions** | Unread @mentions | List → Notification Log (Mention, unread, for you) |
 
 ## Module sidebar

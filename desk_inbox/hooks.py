@@ -7,3 +7,5 @@ app_license = "mit"
 
 app_include_css = "/assets/desk_inbox/css/desk_inbox.css"
 app_include_js = "/assets/desk_inbox/js/desk_inbox.js"
+
+after_install = "desk_inbox.setup.ensure_workflow_action_report_permission"

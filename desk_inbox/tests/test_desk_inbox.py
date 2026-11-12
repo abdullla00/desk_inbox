@@ -8,10 +8,11 @@ from urllib.parse import parse_qs, quote, urlparse
 import frappe
 from frappe.desk.doctype.sidebar.sidebar import resolve_sidebar
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, nowdate
+from frappe.utils import add_days, cint, nowdate
 
 from desk_inbox.api import get_inbox, get_waiting_others_bucket, mark_mention_read, mark_todo_done
 from desk_inbox.desk_inbox.report.waiting_on_others.waiting_on_others import execute as waiting_report_execute
+from desk_inbox.setup import ensure_workflow_action_report_permission
 
 SESSION_USER_SENTINEL = "__session_user__"
 DESK_INBOX_SHELL = "Desk Inbox"
@@ -391,6 +392,18 @@ class TestDeskInbox(FrappeTestCase):
 		waiting = next(i for i in resolved.items if i.get("label") == "Waiting on others")
 		self.assertEqual(waiting.get("report", {}).get("report_type"), "Script Report")
 		self.assertEqual(waiting.get("report", {}).get("ref_doctype"), "Workflow Action")
+
+	def test_desk_user_can_get_report_on_workflow_action(self):
+		"""Waiting on Others needs report perm on Workflow Action."""
+		ensure_workflow_action_report_permission()
+		row = frappe.db.get_value(
+			"Custom DocPerm",
+			{"parent": "Workflow Action", "role": "Desk User", "permlevel": 0},
+			["read", "report"],
+			as_dict=True,
+		)
+		self.assertTrue(row, "Custom DocPerm for Desk User missing")
+		self.assertEqual(cint(row.report), 1)
 
 	def test_view_all_routes_open_inside_desk_inbox_shell(self):
 		"""View all must match sidebar links under /desk/desk-inbox/…"""
