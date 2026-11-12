@@ -4,11 +4,18 @@ A Frappe app that adds an **Inbox** work strip under the Desktop icon grid — a
 
 ## Panels
 
-| Panel | Shows |
-| --- | --- |
-| **Assigned to me** | Open ToDos allocated to you |
-| **Pending my action** | Open Workflow Actions you can act on |
-| **Waiting on others** | Open Workflow Actions on docs you own, waiting on someone else |
+| Panel | Shows | View all |
+| --- | --- | --- |
+| **Assigned to me** | Open ToDos allocated to you | List → ToDo (`allocated_to`=me, Open) |
+| **Pending my action** | Open Workflow Actions you can act on | List → Workflow Action (Open) |
+| **Waiting on others** | Open WAs on docs you own, waiting on someone else | Report → **Waiting on Others** |
+| **Mentions** | Unread @mentions | List → Notification Log (Mention, unread, for you) |
+
+## Module sidebar
+
+Opening the **Desk Inbox** module shows the same four destinations (Assigned → Pending → Waiting report → Mentions). Assigned / Mentions filters resolve to the signed-in user at boot.
+
+**View all** on the Desktop strip opens those same links *inside* the Desk Inbox shell (sidebar stays Desk Inbox), not under ToDo / Workflow / Notifications’ home modules.
 
 ## Requirements
 
@@ -40,7 +47,9 @@ Open **Desktop** and hard-refresh. Inbox appears below the module icons.
 
 ## Features
 
-- Three-column work strip (stacks on small screens)
+- Four-column work strip (stacks on small screens)
+- Global **SortSelector** (Last Updated / Created On / Title) next to refresh; preference in `localStorage`
+- Overdue stays labeled in Assigned, but does not override sort order
 - Scrollable lists with pinned headers / “View all”
 - Auto-refresh every 60s while Desktop is open
 - Hidden during Desktop icon edit mode
@@ -50,7 +59,7 @@ Open **Desktop** and hard-refresh. Inbox appears below the module icons.
 
 Whitelisted methods (session user):
 
-- `desk_inbox.api.get_inbox` — returns assigned / pending_me / waiting_others
+- `desk_inbox.api.get_inbox(limit, sort_by, sort_order)` — returns assigned / pending_me / waiting_others / mentions (`sort_by`: `modified` | `creation` | `title`)
 
 ## License
 
