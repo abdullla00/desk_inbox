@@ -193,10 +193,35 @@ def _get_assigned(limit: int, sort_by: str, sort_order: str) -> dict:
 	return {"count": len(items), "items": items[:limit]}
 
 
+def _can_act_on_workflow_action(permitted_roles: set[str], user_roles: set[str]) -> bool:
+	"""True when the WA names at least one permitted role the user holds.
+
+	Empty permitted roles means nobody is designated to act — not Pending.
+	(Administrator still gets every Role via get_roles, so any non-empty set matches.)
+	"""
+	return bool(permitted_roles) and not permitted_roles.isdisjoint(user_roles)
+
+
+def _permitted_roles_by_action(action_names: list[str]) -> dict[str, set[str]]:
+	if not action_names:
+		return {}
+	WAPR = DocType("Workflow Action Permitted Role")
+	role_rows = (
+		frappe.qb.from_(WAPR)
+		.select(WAPR.parent, WAPR.role)
+		.where(WAPR.parent.isin(action_names))
+	).run(as_dict=True)
+	roles_by_action: dict[str, set[str]] = {}
+	for rr in role_rows:
+		roles_by_action.setdefault(rr.parent, set()).add(rr.role)
+	return roles_by_action
+
+
 def _get_pending_me(limit: int, sort_by: str, sort_order: str) -> dict:
-	"""Open Workflow Actions the current user can act on (respects WA permissions)."""
+	"""Open Workflow Actions the current user can act on (role-permitted)."""
 	filters = {"status": "Open"}
-	# Fetch a wider page; get_list applies Workflow Action permission query.
+	# Fetch a wider page; get_list applies Workflow Action permission query
+	# (Administrator sees all Open — filter again by permitted roles below).
 	rows = frappe.get_list(
 		"Workflow Action",
 		filters=filters,
@@ -213,9 +238,15 @@ def _get_pending_me(limit: int, sort_by: str, sort_order: str) -> dict:
 		limit=200,
 	)
 
+	user_roles = set(frappe.get_roles(frappe.session.user))
+	roles_by_action = _permitted_roles_by_action([r.name for r in rows])
+
 	items = []
 	for row in rows:
 		if not row.reference_doctype or not row.reference_name:
+			continue
+		permitted = roles_by_action.get(row.name, set())
+		if not _can_act_on_workflow_action(permitted, user_roles):
 			continue
 		items.append(
 			{
@@ -252,20 +283,7 @@ def get_waiting_others_bucket(
 	user = frappe.session.user
 	roles = set(frappe.get_roles(user))
 
-	# Actions the user can already take (same permission surface as Pending).
-	# Exclude these so Pending ∩ Waiting is always empty — even when a WA has
-	# no Permitted Role rows (role check alone would mis-classify them).
-	pending_action_names = set(
-		frappe.get_list(
-			"Workflow Action",
-			filters={"status": "Open"},
-			pluck="name",
-			limit=REPORT_WAITING_LIMIT,
-		)
-	)
-
 	WA = DocType("Workflow Action")
-	WAPR = DocType("Workflow Action Permitted Role")
 
 	# All open actions with their permitted roles
 	open_actions = (
@@ -286,16 +304,7 @@ def get_waiting_others_bucket(
 	if not open_actions:
 		return {"count": 0, "items": []}
 
-	action_names = [a.name for a in open_actions]
-	role_rows = (
-		frappe.qb.from_(WAPR)
-		.select(WAPR.parent, WAPR.role)
-		.where(WAPR.parent.isin(action_names))
-	).run(as_dict=True)
-
-	roles_by_action: dict[str, set[str]] = {}
-	for rr in role_rows:
-		roles_by_action.setdefault(rr.parent, set()).add(rr.role)
+	roles_by_action = _permitted_roles_by_action([a.name for a in open_actions])
 
 	# Group by doctype for owner lookups
 	by_doctype: dict[str, list[str]] = {}
@@ -327,12 +336,9 @@ def get_waiting_others_bucket(
 		key = (action.reference_doctype, action.reference_name)
 		if owners.get(key) != user:
 			continue
-		# Already actionable in Pending → never Waiting
-		if action.name in pending_action_names:
-			continue
 		permitted = roles_by_action.get(action.name, set())
-		# User can act via permitted roles → not "waiting on others"
-		if permitted and not permitted.isdisjoint(roles):
+		# Can act (Pending) → never Waiting. Empty roles → Waiting if owner.
+		if _can_act_on_workflow_action(permitted, roles):
 			continue
 		if not frappe.has_permission(action.reference_doctype, "read", action.reference_name):
 			continue
@@ -353,7 +359,6 @@ def get_waiting_others_bucket(
 	items = _sort_items(items, sort_by, sort_order)
 	return {"count": len(items), "items": items[:limit]}
 
-
 def _get_mentions(limit: int, sort_by: str, sort_order: str) -> dict:
 	"""Unread Mention Notification Logs for the current user only."""
 	filters = {
@@ -361,7 +366,6 @@ def _get_mentions(limit: int, sort_by: str, sort_order: str) -> dict:
 		"type": "Mention",
 		"read": 0,
 	}
-	count = frappe.db.count("Notification Log", filters)
 	# Pull a wider page so title/creation sorts are correct before limit.
 	rows = frappe.get_list(
 		"Notification Log",
@@ -406,4 +410,5 @@ def _get_mentions(limit: int, sort_by: str, sort_order: str) -> dict:
 		)
 
 	items = _sort_items(items, sort_by, sort_order)
-	return {"count": count, "items": items[:limit]}
+	# Count must match visible rows (skip unread mentions the user cannot open).
+	return {"count": len(items), "items": items[:limit]}

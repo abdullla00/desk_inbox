@@ -450,3 +450,194 @@ class TestDeskInbox(FrappeTestCase):
 		self.assertIn("get_route(item, false, DESK_INBOX_SHELL)", js)
 		for label in VIEW_ALL_SIDEBAR_LABEL.values():
 			self.assertIn(f'"{label}"', js)
+
+
+class TestDeskInboxCases(FrappeTestCase):
+	"""One focused case per inbox destination / View-all target."""
+
+	PROBE_ROLE = "Desk Inbox Probe Role"
+
+	def _make_todo(self, description: str, **kwargs):
+		doc = {
+			"doctype": "ToDo",
+			"description": description,
+			"status": "Open",
+			"date": nowdate(),
+		}
+		doc.update(kwargs)
+		return frappe.get_doc(doc).insert(ignore_permissions=True)
+
+	def _ensure_probe_role(self):
+		if not frappe.db.exists("Role", self.PROBE_ROLE):
+			frappe.get_doc({"doctype": "Role", "role_name": self.PROBE_ROLE, "desk_access": 1}).insert(
+				ignore_permissions=True
+			)
+
+	def _make_workflow_action(self, reference_doctype: str, reference_name: str, permitted_roles: list[str]):
+		wa = frappe.get_doc(
+			{
+				"doctype": "Workflow Action",
+				"reference_doctype": reference_doctype,
+				"reference_name": reference_name,
+				"workflow_state": "Desk Inbox Probe",
+				"status": "Open",
+			}
+		)
+		for role in permitted_roles:
+			wa.append("permitted_roles", {"role": role})
+		return wa.insert(ignore_permissions=True)
+
+	def test_case_assigned_to_me(self):
+		user = frappe.session.user
+		todo = self._make_todo("CASE Assigned to me", allocated_to=user)
+
+		data = get_inbox(50)
+		names = [i.get("todo_name") for i in data["assigned"]["items"]]
+		self.assertIn(todo.name, names)
+
+		# View-all filters must find it
+		found = frappe.get_list(
+			"ToDo",
+			filters={"allocated_to": user, "status": "Open", "name": todo.name},
+			pluck="name",
+		)
+		self.assertEqual(found, [todo.name])
+
+	def test_case_pending_my_action(self):
+		user = frappe.session.user
+		todo = self._make_todo("CASE Pending my action target", allocated_to=user)
+		# Permitted role the session user already has → shows in Pending
+		roles = frappe.get_roles(user)
+		role = next((r for r in roles if r not in ("All", "Guest", "Desk User")), "System Manager")
+		wa = self._make_workflow_action("ToDo", todo.name, [role])
+
+		data = get_inbox(50)
+		pending_names = {i.get("workflow_action") for i in data["pending_me"]["items"]}
+		waiting_names = {i.get("workflow_action") for i in data["waiting_others"]["items"]}
+		self.assertIn(wa.name, pending_names)
+		self.assertNotIn(wa.name, waiting_names)
+
+		found = frappe.get_list(
+			"Workflow Action",
+			filters={"status": "Open", "name": wa.name},
+			pluck="name",
+		)
+		self.assertEqual(found, [wa.name])
+
+	def test_case_waiting_on_others_empty_roles_for_owner(self):
+		"""Owner + Open WA with no permitted roles → Waiting (not Pending).
+
+		Administrator.get_list sees all Open WAs; role-based can_act keeps
+		empty-role actions out of Pending and in Waiting.
+		"""
+		user = frappe.session.user
+		todo = self._make_todo("CASE Waiting empty-roles target", allocated_to=user)
+		wa = self._make_workflow_action("ToDo", todo.name, [])
+
+		data = get_inbox(50)
+		pending_names = {i.get("workflow_action") for i in data["pending_me"]["items"]}
+		waiting_names = {i.get("workflow_action") for i in data["waiting_others"]["items"]}
+		self.assertNotIn(wa.name, pending_names)
+		self.assertIn(wa.name, waiting_names)
+
+	def test_case_waiting_on_others(self):
+		# Administrator.get_roles() returns every Role — use a limited Desk User.
+		self._ensure_probe_role()
+		probe_user = "desk_inbox_waiting_probe@example.com"
+		if not frappe.db.exists("User", probe_user):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": probe_user,
+					"first_name": "Desk Inbox Waiting Probe",
+					"send_welcome_email": 0,
+					"user_type": "System User",
+				}
+			).insert(ignore_permissions=True)
+		frappe.db.delete("Has Role", {"parent": probe_user})
+		user_doc = frappe.get_doc("User", probe_user)
+		user_doc.append("roles", {"role": "Desk User"})
+		user_doc.save(ignore_permissions=True)
+		frappe.cache.hdel("roles", probe_user)
+		self.assertNotIn(self.PROBE_ROLE, frappe.get_roles(probe_user))
+
+		frappe.set_user(probe_user)
+		try:
+			todo = self._make_todo("CASE Waiting on others target", allocated_to=probe_user)
+			# Owner = probe user, permitted role they do not have → Waiting, not Pending
+			wa = self._make_workflow_action("ToDo", todo.name, [self.PROBE_ROLE])
+
+			data = get_inbox(50)
+			pending_names = {i.get("workflow_action") for i in data["pending_me"]["items"]}
+			waiting_names = {i.get("workflow_action") for i in data["waiting_others"]["items"]}
+			self.assertNotIn(wa.name, pending_names)
+			self.assertIn(wa.name, waiting_names)
+
+			columns, rows = waiting_report_execute()
+			self.assertTrue(columns)
+			report_names = {r.get("workflow_action") for r in rows}
+			self.assertIn(wa.name, report_names)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_case_mentions(self):
+		user = frappe.session.user
+		todo = self._make_todo("CASE Mentions target", allocated_to=user)
+		nlog = frappe.get_doc(
+			{
+				"doctype": "Notification Log",
+				"type": "Mention",
+				"for_user": user,
+				"from_user": user,
+				"document_type": "ToDo",
+				"document_name": todo.name,
+				"subject": f"CASE Mentions on {todo.name}",
+				"read": 0,
+			}
+		).insert(ignore_permissions=True)
+		# Unreadable / incomplete mention must not inflate the badge
+		orphan = frappe.get_doc(
+			{
+				"doctype": "Notification Log",
+				"type": "Mention",
+				"for_user": user,
+				"from_user": user,
+				"subject": "CASE Mentions orphan (no document)",
+				"read": 0,
+			}
+		).insert(ignore_permissions=True)
+
+		data = get_inbox(50)
+		log_names = [i.get("notification_log") for i in data["mentions"]["items"]]
+		self.assertIn(nlog.name, log_names)
+		self.assertNotIn(orphan.name, log_names)
+		self.assertEqual(data["mentions"]["count"], len(data["mentions"]["items"]))
+
+		found = frappe.get_list(
+			"Notification Log",
+			filters={
+				"type": "Mention",
+				"read": 0,
+				"for_user": user,
+				"name": nlog.name,
+			},
+			pluck="name",
+		)
+		self.assertEqual(found, [nlog.name])
+	def test_case_get_inbox_returns_all_four_buckets(self):
+		data = get_inbox(5)
+		for key in ("assigned", "pending_me", "waiting_others", "mentions"):
+			self.assertIn(key, data)
+			self.assertIn("count", data[key])
+			self.assertIn("items", data[key])
+			self.assertIsInstance(data[key]["items"], list)
+
+	def test_case_waiting_report_permission_allows_desk_user(self):
+		ensure_workflow_action_report_permission()
+		from frappe.desk.query_report import get_report_doc
+
+		# Must not raise PermissionError on Workflow Action report ptype
+		doc = get_report_doc("Waiting on Others")
+		self.assertEqual(doc.name, "Waiting on Others")
+		self.assertEqual(doc.ref_doctype, "Workflow Action")
+		self.assertTrue(frappe.has_permission(doc.ref_doctype, "report"))
