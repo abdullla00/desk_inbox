@@ -19,8 +19,8 @@ Opening the **Desk Inbox** module shows the same four destinations (Assigned →
 
 ## Requirements
 
-- Frappe **v16**
-- Desk Desktop page (`/app/desktop`)
+- Frappe **v16.60+** (`<17`)
+- Desk Desktop page (`/desk/desktop`) and/or Dock → **Desk Inbox**
 
 ## Install
 
@@ -43,17 +43,18 @@ bench --site <site-name> install-app desk_inbox
 bench build --app desk_inbox
 ```
 
-Open **Desktop** and hard-refresh. Inbox appears below the module icons.
+Open **Desktop** and hard-refresh. Inbox appears below the module icons. On phone, use **Dock / Apps → Desk Inbox** (sidebar shell) — the strip clears the v16.60 mobile bottom nav when Desktop is open.
 
 ## Features
 
 - Four-column work strip (stacks on small screens)
 - Global **SortSelector** (Last Updated / Created On / Title) next to refresh; preference in `localStorage`
 - Overdue stays labeled in Assigned, but does not override sort order
-- Scrollable lists with pinned headers / “View all”
+- Scrollable preview lists with pinned headers / “View all” (full lists use Framework infinite scroll)
 - Auto-refresh every 60s while Desktop is open
 - Hidden during Desktop icon edit mode
-- Responsive breakpoints for desktop, tablet, and phone
+- Responsive breakpoints for desktop, tablet, and phone (44px touch rows, header stack &lt;480px, mobile-nav clearance)
+- Apps screen tile + Dock entry → `/desk/desk-inbox`
 
 ## API
 

@@ -533,13 +533,32 @@
 
 }
 
-/* Narrow phones */
+/* Narrow phones — 44px touch rows; stack header chrome */
 @media (max-width: 479px) {
 	.desk-inbox {
 		padding: 0 10px;
-		--di-row-h: 38px;
+		--di-row-h: 44px;
 		--di-list-h: calc(var(--di-row-h) * 3);
 	}
+
+	.desk-inbox__header {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 8px;
+	}
+
+	.desk-inbox__actions {
+		justify-content: space-between;
+		width: 100%;
+	}
+}
+
+/* v16.60 mobile bottom nav — Desktop scroll surface is its own
+   (hide_dock); clear the strip so the last panel / View all stay above
+   frappe-mobile-nav + safe-area. */
+body.has-mobile-nav.desktop-page .desk-inbox {
+	margin-bottom: calc(16px + var(--desk-mobile-nav-height, 57px));
+	padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Prefer reduced motion */
